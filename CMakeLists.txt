@@ -763,6 +763,7 @@ set(CRYMP_CLIENT_RESOURCES
   ${PROJECT_SOURCE_DIR}/Scripts/JSON.lua
   ${PROJECT_SOURCE_DIR}/Scripts/Main.lua
   ${PROJECT_SOURCE_DIR}/Scripts/RPC.lua
+  ${PROJECT_SOURCE_DIR}/Config/masters.txt
 )
 
 set_source_files_properties(Resources/Launcher.rc PROPERTIES OBJECT_DEPENDS "${CRYMP_CLIENT_RESOURCES}")

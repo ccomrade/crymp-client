@@ -117,6 +117,7 @@ struct SBasicServerInfo
 	const char *m_country;
 	const char *m_modName;
 	const char *m_modVersion;
+	const char *m_master;
 };
 
 enum EServerBrowserError

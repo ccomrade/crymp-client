@@ -11,6 +11,7 @@ enum EScriptCallback
 	SCRIPT_CALLBACK_ON_UPDATE,
 	SCRIPT_CALLBACK_ON_DISCONNECT,
 	SCRIPT_CALLBACK_ON_SPAWN,
+	SCRIPT_CALLBACK_ON_MASTER_RESOLVED,
 
 	// must be last
 	SCRIPT_CALLBACK_COUNT
@@ -42,4 +43,5 @@ public:
 	void OnUpdate(float deltaTime);
 	void OnDisconnect(int reason, const char *message);
 	void OnSpawn(IEntity *pEntity);
+	void OnMasterResolved();
 };

@@ -10,6 +10,7 @@ class ServerConnector
 	struct ServerInfo
 	{
 		std::string host;
+		std::string master;
 		unsigned int port = 0;
 
 		std::string name;
@@ -20,6 +21,7 @@ class ServerConnector
 		void clear()
 		{
 			host.clear();
+			master.clear();
 			port = 0;
 
 			name.clear();
@@ -47,6 +49,6 @@ public:
 	ServerConnector();
 	~ServerConnector();
 
-	void Connect(const std::string_view & host, unsigned int port);
+	void Connect(const std::string& master, const std::string_view & host, unsigned int port);
 	void Disconnect();
 };

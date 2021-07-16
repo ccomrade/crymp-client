@@ -91,7 +91,8 @@ public:
     m_official(false),
     m_anticheat(false),
 		m_gamepadsonly(false),
-		m_canjoin(true)
+		m_canjoin(true),
+        m_master("")
     {
     }
     string    m_hostName;
@@ -125,6 +126,8 @@ public:
     bool      m_gamepadsonly;
 
 		bool			m_canjoin;//determined on client side
+
+    string m_master;
   };
 
   struct SServerDetails

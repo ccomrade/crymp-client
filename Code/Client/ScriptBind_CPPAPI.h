@@ -20,4 +20,5 @@ public:
 	int SetCallback(IFunctionHandler *pH, int callback, HSCRIPTFUNCTION handler);
 	int SHA256(IFunctionHandler *pH, const char *text);
 	int URLEncode(IFunctionHandler *pH, const char *text);
+	int GetMasters(IFunctionHandler *pH);
 };

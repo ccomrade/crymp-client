@@ -1,3 +1,4 @@
+#include "CryGame/StdAfx.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string_view>
@@ -103,7 +104,7 @@ namespace
 		return (minutes * 60) + seconds;
 	}
 
-	void SetBasicServerInfo(IServerListener *pListener, const json & serverInfo, int serverID, bool isUpdate)
+	void SetBasicServerInfo(IServerListener *pListener, const std::string& master, const json & serverInfo, int serverID, bool isUpdate)
 	{
 		SBasicServerInfo info = {};
 
@@ -117,6 +118,7 @@ namespace
 		info.m_hostPort   =                  GetInt(serverInfo, "local_port");
 		info.m_official   =                  GetInt(serverInfo, "ranked") != 0;
 		info.m_private    =               GetString(serverInfo, "pass") != "0";
+		info.m_master     = master.c_str();
 
 		const std::string version = "1.1.1." + std::to_string(GetInt(serverInfo, "ver"));
 		info.m_gameVersion = version.c_str();
@@ -151,7 +153,7 @@ namespace
 	}
 }
 
-bool ServerBrowser::OnServerList(HTTPClientResult & result)
+bool ServerBrowser::OnServerList(const std::string& master, HTTPClientResult & result)
 {
 	CryLog("[CryMP] Server list (%d): %s", result.code, result.response.c_str());
 
@@ -171,6 +173,8 @@ bool ServerBrowser::OnServerList(HTTPClientResult & result)
 
 			Server server;
 
+			server.master = master;
+
 			if (GetInt(serverInfo, "own"))
 			{
 				std::string_view ipString = GetString(serverInfo, "local_ip");
@@ -189,7 +193,7 @@ bool ServerBrowser::OnServerList(HTTPClientResult & result)
 
 			m_servers.emplace_back(std::move(server));
 
-			SetBasicServerInfo(m_pListener, serverInfo, serverID, false);
+			SetBasicServerInfo(m_pListener, server.master, serverInfo, serverID, false);
 		}
 	}
 	catch (const json::exception & ex)
@@ -201,7 +205,7 @@ bool ServerBrowser::OnServerList(HTTPClientResult & result)
 	return true;
 }
 
-bool ServerBrowser::OnServerInfo(HTTPClientResult & result, int serverID)
+bool ServerBrowser::OnServerInfo(const std::string& master, HTTPClientResult & result, int serverID)
 {
 	CryLog("[CryMP] Server info (%d): %s", result.code, result.response.c_str());
 
@@ -215,7 +219,7 @@ bool ServerBrowser::OnServerInfo(HTTPClientResult & result, int serverID)
 			return false;
 		}
 
-		SetBasicServerInfo(m_pListener, serverInfo, serverID, true);
+		SetBasicServerInfo(m_pListener, master, serverInfo, serverID, true);
 
 		m_pListener->UpdateValue(serverID, "hostname",              GetCString(serverInfo, "name"));
 		m_pListener->UpdateValue(serverID, "mapname",               GetCString(serverInfo, "mapnm"));
@@ -304,24 +308,27 @@ void ServerBrowser::Update()
 {
 	m_servers.clear();
 
-	const std::string url = gClient->GetMasterServerAPI() + "/servers?all&detailed&json";
-
-	gClient->GetHTTPClient()->GET(url, [this](HTTPClientResult & result)
-	{
-		if (m_pListener)
-		{
-			if (result.error)
+	// TODO: read from config file or whatever
+	auto& masters = gClient->GetMasters();
+	for (auto& master : masters) {
+		const std::string url = gClient->GetMasterServerAPI(master) + "/servers?all&detailed&json";
+		gClient->GetHTTPClient()->GET(url, [this, master](HTTPClientResult& result)
 			{
-				CryLogAlways("$4[CryMP] Server list update failed: %s", result.error.what());
-			}
-			else
-			{
-				OnServerList(result);
-			}
+				if (m_pListener)
+				{
+					if (result.error)
+					{
+						CryLogAlways("$4[CryMP] Server list update failed: %s", result.error.what());
+					}
+					else
+					{
+						OnServerList(master, result);
+					}
 
-			m_pListener->UpdateComplete(false);
-		}
-	});
+					m_pListener->UpdateComplete(false);
+				}
+			});
+	}
 }
 
 void ServerBrowser::UpdateServerInfo(int id)
@@ -331,10 +338,11 @@ void ServerBrowser::UpdateServerInfo(int id)
 
 	const std::string ip = IPToString(m_servers[id].ip);
 	const std::string port = std::to_string(m_servers[id].port);
+	const std::string master = m_servers[id].master;
 
-	const std::string url = gClient->GetMasterServerAPI() + "/server?ip=" + ip + "&port=" + port + "&json";
+	const std::string url = gClient->GetMasterServerAPI(master) + "/server?ip=" + ip + "&port=" + port + "&json";
 
-	gClient->GetHTTPClient()->GET(url, [id, this](HTTPClientResult & result)
+	gClient->GetHTTPClient()->GET(url, [id, master, this](HTTPClientResult & result)
 	{
 		if (m_pListener)
 		{
@@ -344,7 +352,7 @@ void ServerBrowser::UpdateServerInfo(int id)
 			}
 			else
 			{
-				if (OnServerInfo(result, id))
+				if (OnServerInfo(master, result, id))
 					m_pListener->ServerUpdateComplete(id);
 				else
 					m_pListener->ServerUpdateFailed(id);
@@ -369,7 +377,7 @@ void ServerBrowser::CheckDirectConnect(int id, unsigned short port)
 {
 	if (!m_pListener || id < 0 || id >= m_servers.size())
 		return;
-
+	gEnv->pConsole->GetCVar("cl_masteraddr")->Set(m_servers[id].master.c_str());
 	m_pListener->ServerDirectConnect(false, m_servers[id].ip, m_servers[id].port);
 }
 

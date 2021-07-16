@@ -258,6 +258,7 @@ struct CMultiPlayerMenu::SGSBrowser : public IServerListener
 		si.m_ping = 10000;
 		si.m_modName = info->m_modName;
 		si.m_modVersion = info->m_modVersion;
+		si.m_master = info->m_master;
 		for (int i = 0;i < m_menu->m_favouriteServers.size();++i)
 		{
 			SStoredServer& srv = m_menu->m_favouriteServers[i];
@@ -1083,11 +1084,16 @@ void CMultiPlayerMenu::JoinServer()
 		{
 			uint ip = serv.m_publicIP;
 			string connect;
-			connect.Format("connect %d.%d.%d.%d:%d", ip & 0xFF, (ip >> 8) & 0xFF, (ip >> 16) & 0xFF, (ip >> 24) & 0xFF, serv.m_hostPort);
+			connect.Format("connect %d.%d.%d.%d:%d", 
+				ip & 0xFF, 
+				(ip >> 8) & 0xFF, 
+				(ip >> 16) & 0xFF, 
+				(ip >> 24) & 0xFF,
+				serv.m_hostPort);
 			g_pGame->GetIGameFramework()->ExecuteCommandNextFrame(connect.c_str());
-		}
-		else
+		} else {
 			m_browser->CheckDirectConnect(serv.m_serverId, serv.m_hostPort);
+		}
 
 		if (m_profile && !m_lan)
 			m_profile->AddRecentServer(serv.m_publicIP, serv.m_hostPort);

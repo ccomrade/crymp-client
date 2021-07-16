@@ -589,6 +589,7 @@ void SCVars::InitCVars(IConsole* pConsole)
 	pConsole->Register("g_ragdollUnrestrictedSP", &g_ragdollUnrestrictedSP, 1, VF_NOT_NET_SYNCED, "");
 	pConsole->Register("g_ragdollUnrestrictedMP", &g_ragdollUnrestrictedMP, 1);
 
+
 	//CryMP CVars (un-synced)
 	pConsole->Register("cl_usePostProcessAimDir", &cl_usePostProcessAimDir, 1, VF_NOT_NET_SYNCED, "");
 	pConsole->Register("cl_messageCenterColor", &cl_messageCenterColor, 1, VF_NOT_NET_SYNCED);
@@ -596,6 +597,7 @@ void SCVars::InitCVars(IConsole* pConsole)
 	pConsole->Register("cl_animationWeaponMultSpeed", &cl_animationWeaponMultSpeed, 3.0f, VF_NOT_NET_SYNCED);
 	pConsole->Register("cl_animationModelMult", &cl_animationModelMult, 1.0f, VF_NOT_NET_SYNCED);
 	pConsole->Register("cl_animationModelMultSpeed", &cl_animationModelMultSpeed, 1.3f, VF_NOT_NET_SYNCED);
+	cl_masteraddr = pConsole->RegisterString("cl_masteraddr", "crymp.net", VF_NOT_NET_SYNCED);
 }
 
 //------------------------------------------------------------------------
@@ -907,6 +909,7 @@ void SCVars::ReleaseCVars()
 	pConsole->UnregisterVariable("cl_wallJump", true);
 	pConsole->UnregisterVariable("cl_flyMode", true);
 	pConsole->UnregisterVariable("cl_messageCenterColor", true);
+	pConsole->UnregisterVariable("cl_masteraddr", true);
 }
 
 //------------------------------------------------------------------------

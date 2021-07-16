@@ -22,6 +22,9 @@
 #include "ServerConnector.h"
 #include "ServerPAK.h"
 
+#include <fstream>
+#include <sstream>
+
 void Client::OnConnectCmd(IConsoleCmdArgs *pArgs)
 {
 	IGameFramework *pGameFramework = gClient->GetGameFramework();
@@ -50,6 +53,7 @@ void Client::OnConnectCmd(IConsoleCmdArgs *pArgs)
 	}
 
 	gClient->GetServerConnector()->Connect(
+		pConsole->GetCVar("cl_masteraddr")->GetString(),
 		pConsole->GetCVar("cl_serveraddr")->GetString(),
 		pConsole->GetCVar("cl_serverport")->GetIVal()
 	);
@@ -123,14 +127,52 @@ void Client::Init(IGameFramework *pGameFramework)
 	pConsole->AddCommand("connect", OnConnectCmd, VF_RESTRICTEDMODE, "Usage: connect [HOST] [PORT]");
 	pConsole->AddCommand("disconnect", OnDisconnectCmd, VF_RESTRICTEDMODE, "Usage: disconnect");
 
-	// execute Lua scripts
+
 	pScriptSystem->ExecuteBuffer(m_scriptJSON.data(), m_scriptJSON.length(), "JSON.lua");
-	pScriptSystem->ExecuteBuffer(m_scriptRPC.data(),  m_scriptRPC.length(),  "RPC.lua");
+	pScriptSystem->ExecuteBuffer(m_scriptRPC.data(), m_scriptRPC.length(), "RPC.lua");
 	pScriptSystem->ExecuteBuffer(m_scriptMain.data(), m_scriptMain.length(), "Main.lua");
+
+	auto streamToMasters = [](std::istream& is, std::vector<std::string>& out) {
+		std::string master;
+		out.clear();
+		while (is >> master) {
+			if (master.length() > 0) {
+				out.push_back(master);
+			}
+		}
+		if (out.size() == 0) out.push_back("crymp.net");
+	};
+
+	std::string_view masterListFallbackStr = WinAPI::GetDataResource(nullptr, RESOURCE_SCRIPT_MASTERS);
+	std::stringstream masterListSs; masterListSs << masterListFallbackStr;
+	streamToMasters(masterListSs, m_masters);
+
+	// Refactor this one to use correct folder
+	std::ifstream fMasters("masters.txt");
+	if (fMasters.is_open()) {
+		CryLogAlways("$6[CryMP] Using local masters.txt as master list provider");
+		streamToMasters(fMasters, m_masters);
+		fMasters.close();
+		GetScriptCallbacks()->OnMasterResolved();
+	} else {
+		GetHTTPClient()->GET("https://raw.githubusercontent.com/ccomrade/crymp-client/master/Config/masters.txt", [this, streamToMasters](const HTTPClientResult& res) -> void {
+			if (res.error || res.code > 399) {
+				CryLogAlways("$6[CryMP] Using compiled masters.txt as a master list provider");
+			} else {
+				CryLogAlways("$6[CryMP] Using remote masters.txt as a master list provider");
+				std::stringstream ss; ss << res.response;
+				streamToMasters(ss, m_masters);
+			}
+			GetScriptCallbacks()->OnMasterResolved();
+		});
+	}
 }
 
-std::string Client::GetMasterServerAPI()
+std::string Client::GetMasterServerAPI(const std::string& master)
 {
+	if (master.length() > 0) {
+		return std::string("https://") + master + "/api";
+	}
 	std::string api;
 
 	const char *endpoint = nullptr;

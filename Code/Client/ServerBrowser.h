@@ -14,13 +14,14 @@ class ServerBrowser : public IServerBrowser
 	{
 		uint32_t ip = 0;
 		uint16_t port = 0;
+		std::string master = "crymp.net";
 	};
 
 	std::vector<Server> m_servers;
 	IServerListener *m_pListener = nullptr;
 
-	bool OnServerList(HTTPClientResult & result);
-	bool OnServerInfo(HTTPClientResult & result, int serverID);
+	bool OnServerList(const std::string& master, HTTPClientResult & result);
+	bool OnServerInfo(const std::string& master, HTTPClientResult & result, int serverID);
 
 public:
 	ServerBrowser();

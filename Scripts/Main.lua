@@ -1,8 +1,9 @@
-System.LogAlways("$5[sfwcl] Client loaded")
+System.LogAlways("$5[CryMP] Client loaded")
 
 ALLOW_EXPERIMENTAL = true
 
 function InitializeClient()
+	local masters = nil
 	local _L = {}
 	local logAlways = System.LogAlways
 	local EXPORT = false
@@ -14,7 +15,7 @@ function InitializeClient()
 	local ACTIVE_RPC = nil
 	local RPC_STATE  = true
 
-	local endpoint = nil
+	local pendingMasterResolves = {}
 	local activeProfile = {
 		static = {
 			logged = false,
@@ -22,7 +23,8 @@ function InitializeClient()
 			password = nil,
 			id = nil,
 			token = nil,
-			display = nil
+			display = nil,
+			master = "crymp.net"
 		},
 		real = {
 			logged = false,
@@ -30,13 +32,27 @@ function InitializeClient()
 			password = nil,
 			id = nil,
 			token = nil,
-			display = nil
+			display = nil,
+			master = "crymp.net"
 		}
 	};
 
 	local localState = {};
 	local addCCommand = System.AddCCommand;
 	local getCVar = System.GetCVar;
+
+	local function OnMasterResolved()
+		masters = CPPAPI.GetMasters()
+		printf("$5[CryMP] Resolved masters:", #masters)
+		for i, master in pairs(masters) do
+			printf("$5[CryMP] - %s", master)
+		end
+		for i, resolve in pairs(pendingMasterResolves) do
+			-- first master gets to be the default master
+			resolve(masters[1])
+		end
+		pendingMasterResolves = {}
+	end
 
 	local function _pcall(func, ...)
 		local status,err=pcall(func,...);
@@ -248,13 +264,6 @@ function InitializeClient()
 		localState.HOOKS[hookType][name] = nil
 	end
 
-	local function SetHTTPEndpoint(baseUri)
-		endpoint = baseUri
-		SFWCL_ENDPOINT = baseUri
-	end
-
-	SetHTTPEndpoint("https://crymp.net/api")
-
 	local function GetProfile()
 		if activeProfile.real.logged then
 			return activeProfile.real
@@ -267,27 +276,43 @@ function InitializeClient()
 
 	local function Promise(callback)
 		local Ancestor = {
+			_PrematureResolveFlag = false,
+			_PrematureRejectFlag = false,
+			_PrematureResolve = nil,
+			_PrematureReject = nil,
 			_Handler = nil,
 			_Catch = nil,
 			_Promise = false,
 			Then = function(self, handler)
 				self._Handler = handler
+				if self._PrematureResolveFlag then
+					self:CallThen(self._PrematureResolve)
+				end
 				return self
 			end,
 			Catch = function(self, handler)
 				self._Catch = handler
+				if self._PrematureRejectFlag then
+					self:CallCatch(self._PrematureReject)
+				end
 				return self
 			end,
 			CallThen = function(self, response)
 				if self._Handler ~= nil then
 					self._Handler(response)
 					self._Handler = nil
+				else
+					self._PrematureResolveFlag = true
+					self._PrematureResolve = response
 				end
 			end,
 			CallCatch = function(self, response)
 				if self._Catch ~= nil then
 					self._Catch(response)
 					self._Catch = nil
+				else
+					self._PrematureRejectFlag = true
+					self._PrematureReject = response
 				end
 			end,
 		}
@@ -339,18 +364,31 @@ function InitializeClient()
 		})
 	end
 
+	local function GetMaster()
+		return Promise(function(resolve)
+			if masters ~= nil then
+				return resolve(masters[1])
+			end
+			table.insert(pendingMasterResolves, resolve)
+		end)
+	end
+
 	local function GetStaticID()
 		return Promise(function(resolve, reject)
-			GET(endpoint .. "/id")
-			:Then(function(response)
-				local id, token = string.match(response,"([0-9]+)/([0-9a-fA-F]+)")
-				if id and token then
-					return resolve({id = id, token = token, name = "::tr:" .. id, password = token, logged = true})
-				end
-				reject("Couldn't obtain static profile ID")
-			end)
-			:Catch(function(error)
-				reject("Couldn't obtain static profile ID, error: " .. tostring(error))
+			GetMaster()
+			:Then(function(defaultMaster)
+				local endpoint = "https://" .. defaultMaster .. "/api"
+				GET(endpoint .. "/id")
+				:Then(function(response)
+					local id, token = string.match(response,"([0-9]+)/([0-9a-fA-F]+)")
+					if id and token then
+						return resolve({id = id, token = token, name = "::tr:" .. id, password = token, logged = true, master = defaultMaster})
+					end
+					reject("Couldn't obtain static profile ID")
+				end)
+				:Catch(function(error)
+					reject("Couldn't obtain static profile ID, error: " .. tostring(error))
+				end)
 			end)
 		end)
 	end
@@ -371,27 +409,41 @@ function InitializeClient()
 	local function Login(name, password, profileType)
 		profileType = profileType or "real"
 		return Promise(function(resolve, reject)
-			POST(endpoint .. "/login", {
-				a = name,
-				b = password
-			})
-			:Then(function(response)
-				if response == "FAIL" then
-					reject("Invalid credentials")
+			GetMaster():Then(function(defaultMaster)
+				local endpoint = "https://" .. defaultMaster .. "/api"
+				local authHost = defaultMaster
+				local authEndpoint = endpoint
+				local prefix, postfix = name:match("([^@]+)@(.+)")
+				if prefix and postfix then
+					name = prefix
+					authHost = postfix
+					authEndpoint = "https://" .. postfix .. "/api"
 				else
-					local id, token, display = response:match("([0-9]+),([a-zA-Z0-9_]+),(.*)")
-					activeProfile[profileType] = {
-						logged = true,
-						name = name,
-						password = password,
-						id = id,
-						token = token,
-						display = display
-					}
-					resolve(activeProfile[profileType])
+					authHost = defaultMaster
 				end
+				POST(authEndpoint .. "/login", {
+					a = name,
+					b = password
+				})
+				:Then(function(response)
+					if response == "FAIL" then
+						reject("Invalid credentials")
+					else
+						local id, token, display = response:match("([0-9]+),([a-zA-Z0-9_]+),(.*)")
+						activeProfile[profileType] = {
+							logged = true,
+							name = name,
+							password = password,
+							id = id,
+							token = token,
+							display = display,
+							master = authHost
+						}
+						resolve(activeProfile[profileType])
+					end
+				end)
+				:Catch(reject)
 			end)
-			:Catch(reject)
 		end)
 	end
 
@@ -399,7 +451,11 @@ function InitializeClient()
 		return Promise(function(resolve, reject)
 			local profile = GetProfile()
 			if not profile then return reject("Couldn't find any profile") end
-			Login(profile.name, profile.password)
+			local profileName = profile.name
+			if profile.master ~= "crymp.net" then
+				profileName = profileName .. "@" .. profile.master
+			end
+			Login(profileName, profile.password)
 			:Then(function(session)
 				resolve(session)
 			end)
@@ -419,6 +475,15 @@ function InitializeClient()
 		end)
 	end
 
+	local function GetValidateCommand(profile)
+		local id = profile.id
+		if profile.master ~= "crymp.net" then
+			id = id .. "@" .. profile.master
+		end
+		local command = string.format("!validate %s %s %s", id, profile.token, profile.display or "Nomad")
+		return command
+	end
+
 	local function Authenticate()
 		return Promise(function(resolve, reject)
 			if not g_localActor then
@@ -430,13 +495,13 @@ function InitializeClient()
 				RefreshSession()
 				:Then(function(session)
 					profile = GetProfile()
-					local command = string.format("!validate %s %s %s", profile.id, profile.token, profile.display or "Nomad")
+					local command = GetValidateCommand(profile)
 					g_gameRules.game:SendChatMessage(ChatToTarget, g_localActor.id, g_localActor.id, command)
 					resolve(true)
 				end)
 				:Catch(function(error)
 					printf(RED .. "Failed to reactivate session, using old profile")
-					local command = string.format("!validate %s %s %s", profile.id, profile.token, profile.display or "Nomad")
+					local command = GetValidateCommand(profile)
 					g_gameRules.game:SendChatMessage(ChatToTarget, g_localActor.id, g_localActor.id, command)
 					resolve(true)
 				end)
@@ -511,6 +576,7 @@ function InitializeClient()
 	CPPAPI.SetCallback(SCRIPT_CALLBACK_ON_UPDATE, OnUpdate)
 	CPPAPI.SetCallback(SCRIPT_CALLBACK_ON_DISCONNECT, OnDisconnect)
 	CPPAPI.SetCallback(SCRIPT_CALLBACK_ON_SPAWN, OnSpawn)
+	CPPAPI.SetCallback(SCRIPT_CALLBACK_ON_MASTER_RESOLVED, OnMasterResolved)
 
 	CPPAPI.AddCCommand("secu_login", LoginCCommandHandler)
 	CPPAPI.AddCCommand("simple_login", LoginCCommandHandler)
@@ -532,10 +598,8 @@ function InitializeClient()
 		DEBUG_MODE = not DEBUG_MODE
 		if DEBUG_MODE then
 			printf("$3Debug mode active")
-			endpoint = "http://crymp.net/api"
 		else
 			printf("$4Debug mode disabled")
-			endpoint = "https://crymp.net/api"
 		end
 	end)
 
@@ -576,6 +640,10 @@ function InitializeClient()
 			end
 		end
 	end
+	return true
 end
 
-InitializeClient()
+local err, res = pcall(InitializeClient)
+if err then
+	System.LogAlways("$4[CryMP] Failed to InitializeClient: %s", tostring(err))
+end

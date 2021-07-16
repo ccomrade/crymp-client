@@ -13,6 +13,7 @@ struct HTTPClientTask : public IExecutorTask
 	// worker thread
 	void Execute() override
 	{
+		CryLog("%s %s", request.method.c_str(), request.url.c_str());
 		try
 		{
 			result.code = WinAPI::HTTPRequest(
@@ -57,11 +58,13 @@ struct HTTPClientTask : public IExecutorTask
 
 void HTTPClient::AddTelemetryHeaders(HTTPClientRequest & request)
 {
-	if (Util::StartsWith(gClient->GetMasterServerAPI(), request.url))
-	{
-		request.headers["X-Sfwcl-HWID"] = m_hwid;
-		request.headers["X-Sfwcl-Locale"] = m_locale;
-		request.headers["X-Sfwcl-Tz"] = m_timezone;
+	for (auto& master : gClient->GetMasters()) {
+		if (Util::StartsWith(gClient->GetMasterServerAPI(master), request.url)) {
+			request.headers["X-Sfwcl-HWID"] = m_hwid;
+			request.headers["X-Sfwcl-Locale"] = m_locale;
+			request.headers["X-Sfwcl-Tz"] = m_timezone;
+			break;
+		}
 	}
 }
 

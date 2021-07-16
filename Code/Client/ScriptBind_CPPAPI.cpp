@@ -22,6 +22,7 @@ ScriptBind_CPPAPI::ScriptBind_CPPAPI()
 	SCRIPT_REG_GLOBAL(SCRIPT_CALLBACK_ON_UPDATE);
 	SCRIPT_REG_GLOBAL(SCRIPT_CALLBACK_ON_DISCONNECT);
 	SCRIPT_REG_GLOBAL(SCRIPT_CALLBACK_ON_SPAWN);
+	SCRIPT_REG_GLOBAL(SCRIPT_CALLBACK_ON_MASTER_RESOLVED);
 
 	SCRIPT_REG_TEMPLFUNC(AddCCommand, "name, handler");
 	SCRIPT_REG_TEMPLFUNC(ApplyMaskAll, "mask, apply");
@@ -35,6 +36,7 @@ ScriptBind_CPPAPI::ScriptBind_CPPAPI()
 	SCRIPT_REG_TEMPLFUNC(SetCallback, "callback, handler");
 	SCRIPT_REG_TEMPLFUNC(SHA256, "text");
 	SCRIPT_REG_TEMPLFUNC(URLEncode, "text");
+	SCRIPT_REG_TEMPLFUNC(GetMasters, "");
 }
 
 ScriptBind_CPPAPI::~ScriptBind_CPPAPI()
@@ -166,4 +168,15 @@ int ScriptBind_CPPAPI::SHA256(IFunctionHandler *pH, const char *text)
 int ScriptBind_CPPAPI::URLEncode(IFunctionHandler *pH, const char *text)
 {
 	return pH->EndFunction(HTTP::URLEncode(text).c_str());
+}
+
+int ScriptBind_CPPAPI::GetMasters(IFunctionHandler* pH)
+{
+	auto masters = gClient->GetMasters();
+	SmartScriptTable table;
+	if (!table.Create(m_pSS)) return pH->EndFunction(false);
+	for (auto& master : masters) {
+		table->PushBack(master.c_str());
+	}
+	return pH->EndFunction(table);
 }
